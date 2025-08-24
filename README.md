@@ -110,7 +110,7 @@ Kayseri Ana Depo (Level 0)
 - **Bekleyen İstek**: 0 adet
 
 ### 📋 Stok İstekleri Yönetimi
-![Stok İstekleri](images/stock-request-screen.png)
+![Stok İstekleri](images/create-request-screen.png)
 
 **Stok İstekleri Sayfası Özellikleri:**
 - Tüm stok isteklerinin merkezi yönetimi
@@ -144,7 +144,7 @@ Kayseri Ana Depo (Level 0)
 - **Stok Yok**: Mevcut miktar = 0
 
 ### ➕ Stok İsteği Oluşturma
-![Stok İsteği Oluşturma](images/create-request-screen.png)
+![Stok İsteği Oluşturma](images/stock-request-screen.png)
 
 **Stok İsteği Oluşturma Formu:**
 - Basit ve kullanıcı dostu form tasarımı
