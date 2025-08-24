@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\CategoryService;
 use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -9,16 +10,19 @@ use Illuminate\View\View;
 
 class CategoryController extends Controller
 {
+    protected $categoryService;
+
+    public function __construct(CategoryService $categoryService)
+    {
+        $this->categoryService = $categoryService;
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(): View
     {
-        $categories = Category::with(['parent', 'children', 'products'])
-            ->active()
-            ->orderBy('name')
-            ->get();
-
+        $categories = $this->categoryService->getActiveCategories();
         return view('categories.index', compact('categories'));
     }
 
@@ -27,7 +31,7 @@ class CategoryController extends Controller
      */
     public function create(): View
     {
-        $parentCategories = Category::active()->get();
+        $parentCategories = $this->categoryService->getParentCategories();
         return view('categories.create', compact('parentCategories'));
     }
 
@@ -36,13 +40,14 @@ class CategoryController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'parent_id' => 'nullable|exists:categories,id',
-        ]);
+        $result = $this->categoryService->createCategory($request->all());
 
-        Category::create($validated);
+        if (!$result['success']) {
+            if (isset($result['errors'])) {
+                return redirect()->back()->withErrors($result['errors']);
+            }
+            return redirect()->back()->with('error', $result['message']);
+        }
 
         return redirect()->route('categories.index')
             ->with('success', 'Kategori başarıyla oluşturuldu.');
@@ -53,7 +58,7 @@ class CategoryController extends Controller
      */
     public function show(Category $category): View
     {
-        $category->load(['parent', 'children', 'products']);
+        $category = $this->categoryService->getCategoryById($category->id);
         return view('categories.show', compact('category'));
     }
 
@@ -62,7 +67,7 @@ class CategoryController extends Controller
      */
     public function edit(Category $category): View
     {
-        $parentCategories = Category::active()->where('id', '!=', $category->id)->get();
+        $parentCategories = $this->categoryService->getParentCategories();
         return view('categories.edit', compact('category', 'parentCategories'));
     }
 
@@ -71,19 +76,14 @@ class CategoryController extends Controller
      */
     public function update(Request $request, Category $category): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'parent_id' => 'nullable|exists:categories,id',
-        ]);
+        $result = $this->categoryService->updateCategory($category->id, $request->all());
 
-        // Kendisini parent olarak seçemez
-        if (isset($validated['parent_id']) && $validated['parent_id'] == $category->id) {
-            return redirect()->back()
-                ->withErrors(['parent_id' => 'Kategori kendisini üst kategori olarak seçemez.']);
+        if (!$result['success']) {
+            if (isset($result['errors'])) {
+                return redirect()->back()->withErrors($result['errors']);
+            }
+            return redirect()->back()->with('error', $result['message']);
         }
-
-        $category->update($validated);
 
         return redirect()->route('categories.index')
             ->with('success', 'Kategori başarıyla güncellendi.');
@@ -94,19 +94,12 @@ class CategoryController extends Controller
      */
     public function destroy(Category $category): RedirectResponse
     {
-        // Alt kategorileri var mı kontrol et
-        if ($category->children()->count() > 0) {
-            return redirect()->route('categories.index')
-                ->with('error', 'Bu kategorinin alt kategorileri bulunmaktadır. Önce onları silmelisiniz.');
-        }
+        $result = $this->categoryService->deleteCategory($category->id);
 
-        // Ürünleri var mı kontrol et
-        if ($category->products()->count() > 0) {
+        if (!$result['success']) {
             return redirect()->route('categories.index')
-                ->with('error', 'Bu kategoride ürünler bulunmaktadır. Önce ürünleri silmelisiniz.');
+                ->with('error', $result['message']);
         }
-
-        $category->delete();
 
         return redirect()->route('categories.index')
             ->with('success', 'Kategori başarıyla silindi.');
@@ -117,7 +110,7 @@ class CategoryController extends Controller
      */
     public function products(Category $category): View
     {
-        $products = $category->products()->with(['stocks.location'])->paginate(15);
+        $products = $this->categoryService->getProductsByCategory($category->id);
         return view('categories.products', compact('category', 'products'));
     }
 }

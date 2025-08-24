@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\StockService;
+use App\Services\ProductService;
+use App\Services\LocationService;
 use App\Models\Stock;
 use App\Models\Product;
 use App\Models\Location;
@@ -11,39 +14,27 @@ use Illuminate\View\View;
 
 class StockController extends Controller
 {
+    protected $stockService;
+    protected $productService;
+    protected $locationService;
+
+    public function __construct(StockService $stockService, ProductService $productService, LocationService $locationService)
+    {
+        $this->stockService = $stockService;
+        $this->productService = $productService;
+        $this->locationService = $locationService;
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request): View
     {
-        $query = Stock::with(['product.category', 'location']);
-
-        // Filtreleme
-        if ($request->filled('location_id')) {
-            $query->where('location_id', $request->location_id);
-        }
-
-        if ($request->filled('product_id')) {
-            $query->where('product_id', $request->product_id);
-        }
-
-        if ($request->filled('status')) {
-            switch ($request->status) {
-                case 'low':
-                    $query->lowStock();
-                    break;
-                case 'out':
-                    $query->outOfStock();
-                    break;
-                case 'normal':
-                    $query->inStock()->whereRaw('quantity > min_quantity');
-                    break;
-            }
-        }
-
-        $stocks = $query->paginate(20);
-        $locations = Location::active()->get();
-        $products = Product::active()->get();
+        $filters = $request->only(['location_id', 'product_id', 'status']);
+        $filters['per_page'] = 20;
+        $stocks = $this->stockService->getStocksWithFilters($filters);
+        $locations = $this->locationService->getActiveLocations();
+        $products = $this->productService->getActiveProducts();
 
         return view('stocks.index', compact('stocks', 'locations', 'products'));
     }

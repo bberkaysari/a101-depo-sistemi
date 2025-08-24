@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\ProductService;
+use App\Services\CategoryService;
 use App\Models\Product;
 use App\Models\Category;
 use App\Models\Stock;
@@ -11,29 +13,23 @@ use Illuminate\View\View;
 
 class ProductController extends Controller
 {
+    protected $productService;
+    protected $categoryService;
+
+    public function __construct(ProductService $productService, CategoryService $categoryService)
+    {
+        $this->productService = $productService;
+        $this->categoryService = $categoryService;
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request): View
     {
-        $query = Product::with(['category', 'stocks.location']);
-
-        // Filtreleme
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
-        }
-
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('sku', 'like', "%{$search}%")
-                  ->orWhere('barcode', 'like', "%{$search}%");
-            });
-        }
-
-        $products = $query->active()->paginate(15);
-        $categories = Category::active()->get();
+        $filters = $request->only(['category_id', 'search']);
+        $products = $this->productService->paginateProducts($filters, 15);
+        $categories = $this->categoryService->getActiveCategories();
 
         return view('products.index', compact('products', 'categories'));
     }
@@ -43,7 +39,7 @@ class ProductController extends Controller
      */
     public function create(): View
     {
-        $categories = Category::active()->get();
+        $categories = $this->categoryService->getActiveCategories();
         $errors = session('errors') ?? collect();
         return view('products.create', compact('categories', 'errors'));
     }
@@ -53,17 +49,14 @@ class ProductController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'sku' => 'required|string|max:100|unique:products',
-            'barcode' => 'nullable|string|max:100|unique:products',
-            'category_id' => 'required|exists:categories,id',
-            'unit_price' => 'required|numeric|min:0',
-            'unit' => 'required|string|max:50',
-        ]);
+        $result = $this->productService->createProduct($request->all());
 
-        $product = Product::create($validated);
+        if (!$result['success']) {
+            if (isset($result['errors'])) {
+                return redirect()->back()->withErrors($result['errors']);
+            }
+            return redirect()->back()->with('error', $result['message']);
+        }
 
         return redirect()->route('products.index')
             ->with('success', 'Ürün başarıyla oluşturuldu.');
@@ -74,7 +67,7 @@ class ProductController extends Controller
      */
     public function show(Product $product): View
     {
-        $product->load(['category', 'stocks.location', 'stockRequests']);
+        $product = $this->productService->getProductById($product->id);
         return view('products.show', compact('product'));
     }
 
@@ -83,7 +76,7 @@ class ProductController extends Controller
      */
     public function edit(Product $product): View
     {
-        $categories = Category::active()->get();
+        $categories = $this->categoryService->getActiveCategories();
         return view('products.edit', compact('product', 'categories'));
     }
 
@@ -92,17 +85,14 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'sku' => 'required|string|max:100|unique:products,sku,' . $product->id,
-            'barcode' => 'nullable|string|max:100|unique:products,barcode,' . $product->id,
-            'category_id' => 'required|exists:categories,id',
-            'unit_price' => 'required|numeric|min:0',
-            'unit' => 'required|string|max:50',
-        ]);
+        $result = $this->productService->updateProduct($product->id, $request->all());
 
-        $product->update($validated);
+        if (!$result['success']) {
+            if (isset($result['errors'])) {
+                return redirect()->back()->withErrors($result['errors']);
+            }
+            return redirect()->back()->with('error', $result['message']);
+        }
 
         return redirect()->route('products.index')
             ->with('success', 'Ürün başarıyla güncellendi.');
@@ -113,13 +103,12 @@ class ProductController extends Controller
      */
     public function destroy(Product $product): RedirectResponse
     {
-        // Ürünün stokları var mı kontrol et
-        if ($product->stocks()->count() > 0) {
-            return redirect()->route('products.index')
-                ->with('error', 'Bu ürünün stokları bulunmaktadır. Önce stokları silmelisiniz.');
-        }
+        $result = $this->productService->deleteProduct($product->id);
 
-        $product->delete();
+        if (!$result['success']) {
+            return redirect()->route('products.index')
+                ->with('error', $result['message']);
+        }
 
         return redirect()->route('products.index')
             ->with('success', 'Ürün başarıyla silindi.');
@@ -130,21 +119,7 @@ class ProductController extends Controller
      */
     public function stockLevels(Product $product): View
     {
-        $stocks = $product->stocks()->with('location')->get();
-        $locations = \App\Models\Location::active()->get();
-        
-        // Lokasyonlarda stok yoksa 0 olarak göster
-        $stockLevels = $locations->map(function($location) use ($stocks) {
-            $stock = $stocks->where('location_id', $location->id)->first();
-            return [
-                'location' => $location,
-                'quantity' => $stock ? $stock->quantity : 0,
-                'min_quantity' => $stock ? $stock->min_quantity : 0,
-                'max_quantity' => $stock ? $stock->max_quantity : null,
-                'stock' => $stock
-            ];
-        });
-
+        $stockLevels = $this->productService->getProductStockLevels($product->id);
         return view('products.stock-levels', compact('product', 'stockLevels'));
     }
 }

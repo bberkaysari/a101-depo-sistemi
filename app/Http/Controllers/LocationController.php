@@ -40,16 +40,14 @@ class LocationController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'type' => 'required|in:warehouse,store,branch',
-            'address' => 'nullable|string|max:500',
-            'parent_id' => 'nullable|exists:locations,id',
-            'level' => 'required|integer|min:0',
-            'is_active' => 'boolean'
-        ]);
+        $result = $this->locationService->createLocation($request->all());
 
-        $this->locationService->createLocation($validated);
+        if (!$result['success']) {
+            if (isset($result['errors'])) {
+                return redirect()->back()->withErrors($result['errors']);
+            }
+            return redirect()->back()->with('error', $result['message']);
+        }
 
         return redirect()->route('locations.index')
             ->with('success', 'Lokasyon başarıyla oluşturuldu.');
@@ -79,16 +77,14 @@ class LocationController extends Controller
      */
     public function update(Request $request, string $id): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'type' => 'required|in:warehouse,store,branch',
-            'address' => 'nullable|string|max:500',
-            'parent_id' => 'nullable|exists:locations,id',
-            'level' => 'required|integer|min:0',
-            'is_active' => 'boolean'
-        ]);
+        $result = $this->locationService->updateLocation($id, $request->all());
 
-        $this->locationService->updateLocation($id, $validated);
+        if (!$result['success']) {
+            if (isset($result['errors'])) {
+                return redirect()->back()->withErrors($result['errors']);
+            }
+            return redirect()->back()->with('error', $result['message']);
+        }
 
         return redirect()->route('locations.index')
             ->with('success', 'Lokasyon başarıyla güncellendi.');
@@ -99,7 +95,12 @@ class LocationController extends Controller
      */
     public function destroy(string $id): RedirectResponse
     {
-        $this->locationService->deleteLocation($id);
+        $result = $this->locationService->deleteLocation($id);
+
+        if (!$result['success']) {
+            return redirect()->route('locations.index')
+                ->with('error', $result['message']);
+        }
 
         return redirect()->route('locations.index')
             ->with('success', 'Lokasyon başarıyla silindi.');

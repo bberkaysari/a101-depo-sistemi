@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\StockRequestService;
+use App\Services\ProductService;
+use App\Services\LocationService;
 use App\Models\StockRequest;
 use App\Models\Product;
 use App\Models\Location;
@@ -13,33 +16,27 @@ use Illuminate\Support\Facades\Auth;
 
 class StockRequestController extends Controller
 {
+    protected $stockRequestService;
+    protected $productService;
+    protected $locationService;
+
+    public function __construct(StockRequestService $stockRequestService, ProductService $productService, LocationService $locationService)
+    {
+        $this->stockRequestService = $stockRequestService;
+        $this->productService = $productService;
+        $this->locationService = $locationService;
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request): View
     {
-        $query = StockRequest::with(['product.category', 'fromLocation', 'toLocation', 'requestedBy']);
-
-        // Filtreleme
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->filled('from_location_id')) {
-            $query->where('from_location_id', $request->from_location_id);
-        }
-
-        if ($request->filled('to_location_id')) {
-            $query->where('to_location_id', $request->to_location_id);
-        }
-
-        if ($request->filled('product_id')) {
-            $query->where('product_id', $request->product_id);
-        }
-
-        $stockRequests = $query->latest()->paginate(20);
-        $locations = Location::active()->get();
-        $products = Product::active()->get();
+        $filters = $request->only(['status', 'from_location_id', 'to_location_id', 'product_id']);
+        $filters['per_page'] = 20;
+        $stockRequests = $this->stockRequestService->getRequestsWithFilters($filters);
+        $locations = $this->locationService->getActiveLocations();
+        $products = $this->productService->getActiveProducts();
 
         return view('stock-requests.index', compact('stockRequests', 'locations', 'products'));
     }
